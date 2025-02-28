@@ -268,6 +268,8 @@ async def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
     bot = telegram.Bot(token=bot_token)
     telegram_caption_limit = 1024
     print(f"Attempting to send to chat_id: {channel_id} with bot token ending in: {bot_token[-6:]}")
+    # Add this line to explicitly check the value
+    print(f"Raw channel_id value: '{channel_id}' (type: {type(channel_id)})")
     
     for attempt in range(3):
         try:
@@ -291,11 +293,7 @@ async def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
             print("Document sent successfully to Telegram")
             break
         except telegram.error.TimedOut:
-            print(f"Telegram timeout on attempt {attempt + 1}, retrying...")
-            await asyncio.sleep(5)
-        except Exception as e:
-            print(f"Failed to send document to Telegram: {str(e)}")
-            raise
+            print(f"Telegram timeout on attemp
 
 async def main():
     try:
