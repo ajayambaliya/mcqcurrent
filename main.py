@@ -264,7 +264,7 @@ def check_and_insert_urls(urls):
     print(f"Found {len(new_urls)} new URLs: {new_urls}")
     return new_urls
 
-def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
+async def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
     bot = telegram.Bot(token=bot_token)
     telegram_caption_limit = 1024
     
@@ -273,15 +273,15 @@ def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
             with open(docx_path, 'rb') as docx_file:
                 if len(caption) > telegram_caption_limit:
                     short_caption = caption[:telegram_caption_limit-3] + "..."
-                    bot.send_document(
+                    await bot.send_document(
                         chat_id=channel_id,
                         document=docx_file,
                         filename=os.path.basename(docx_path),
                         caption=short_caption
                     )
-                    bot.send_message(chat_id=channel_id, text=caption)
+                    await bot.send_message(chat_id=channel_id, text=caption)
                 else:
-                    bot.send_document(
+                    await bot.send_document(
                         chat_id=channel_id,
                         document=docx_file,
                         filename=os.path.basename(docx_path),
@@ -291,7 +291,7 @@ def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
             break
         except telegram.error.TimedOut:
             print(f"Telegram timeout on attempt {attempt + 1}, retrying...")
-            asyncio.sleep(5)
+            await asyncio.sleep(5)
         except Exception as e:
             print(f"Failed to send document to Telegram: {str(e)}")
             raise
@@ -341,7 +341,7 @@ async def main():
             + "🎉 Join us :- @gujtest 🎉"
         )
         
-        send_docx_to_telegram(docx_path, bot_token, channel_id, caption)
+        await send_docx_to_telegram(docx_path, bot_token, channel_id, caption)
         
         os.unlink(docx_path)
         print("Temporary file deleted")
