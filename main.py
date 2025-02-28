@@ -22,9 +22,16 @@ DB_NAME = os.environ.get('DB_NAME')
 COLLECTION_NAME = os.environ.get('COLLECTION_NAME')
 MONGO_CONNECTION_STRING = os.environ.get('MONGO_CONNECTION_STRING')
 
-client = pymongo.MongoClient(MONGO_CONNECTION_STRING)
-db = client[DB_NAME]
-collection = db[COLLECTION_NAME]
+# Validate MongoDB credentials
+if not all([DB_NAME, COLLECTION_NAME, MONGO_CONNECTION_STRING]):
+    raise ValueError("Missing MongoDB environment variables: DB_NAME, COLLECTION_NAME, or MONGO_CONNECTION_STRING")
+
+try:
+    client = pymongo.MongoClient(MONGO_CONNECTION_STRING)
+    db = client[DB_NAME]
+    collection = db[COLLECTION_NAME]
+except pymongo.errors.ConnectionError as e:
+    raise ConnectionError(f"Failed to connect to MongoDB: {str(e)}")
 
 def fetch_article_urls(base_url, pages):
     article_urls = []
@@ -143,7 +150,7 @@ def add_paragraph_border(paragraph):
     bottom.set(qn('w:sz'), '6')  # 0.75pt
     bottom.set(qn('w:space'), '1')
     bottom.set(qn('w:color'), 'C8C8C8')  # Light gray
-    pBdr.append(bottom)
+    pBdr.append(bottom)  # Fixed: Replace 'custom' with 'bottom'
     pPr.append(pBdr)
 
 def setup_document_styles(doc):
@@ -265,6 +272,13 @@ def check_and_insert_urls(urls):
     return new_urls
 
 async def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
+    if not bot_token or not channel_id:
+        raise ValueError("Bot token or channel ID is missing")
+    
+    # Convert channel_id to integer if it’s a string
+    if isinstance(channel_id, str):
+        channel_id = int(channel_id)
+    
     bot = telegram.Bot(token=bot_token)
     telegram_caption_limit = 1024
     print(f"Attempting to send to chat_id: {channel_id} (type: {type(channel_id)}) with bot token ending in: {bot_token[-6:]}")
@@ -335,6 +349,9 @@ async def main():
         
         bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
         channel_id = os.environ.get('TELEGRAM_CHANNEL_ID')
+        if not bot_token or not channel_id:
+            raise ValueError("TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL_ID not set in environment variables")
+        
         print(f"Bot token from env ends with: {bot_token[-6:] if bot_token else 'None'}")
         print(f"Channel ID from env: {channel_id} (type: {type(channel_id)})")
         
@@ -352,3 +369,6 @@ async def main():
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         raise
+
+if __name__ == "__main__":
+    asyncio.run(main())
