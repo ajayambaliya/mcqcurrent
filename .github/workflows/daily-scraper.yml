@@ -31,13 +31,6 @@ jobs:
           DB_NAME: "mcqwale"
           COLLECTION_NAME: "scraped_url"
         run: |
-          python main.py # Replace with your script's filename
+          python main.py 
 
-      - name: Commit any changes (e.g., updated MongoDB data)
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add .
-          git commit -m "Update scraped data" || echo "No changes to commit"
-          git push
-        continue-on-error: true
+     
