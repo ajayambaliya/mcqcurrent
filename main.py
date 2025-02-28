@@ -267,6 +267,7 @@ def check_and_insert_urls(urls):
 async def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
     bot = telegram.Bot(token=bot_token)
     telegram_caption_limit = 1024
+    print(f"Attempting to send to chat_id: {channel_id} with bot token ending in: {bot_token[-6:]}")
     
     for attempt in range(3):
         try:
