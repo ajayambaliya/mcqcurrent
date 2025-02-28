@@ -293,7 +293,11 @@ async def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
             print("Document sent successfully to Telegram")
             break
         except telegram.error.TimedOut:
-            print(f"Telegram timeout on attemp
+            print(f"Telegram timeout on attempt {attempt + 1}, retrying...")
+            await asyncio.sleep(5)
+        except Exception as e:
+            print(f"Failed to send document to Telegram: {str(e)}")
+            raise
 
 async def main():
     try:
