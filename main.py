@@ -267,37 +267,36 @@ def check_and_insert_urls(urls):
 async def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
     bot = telegram.Bot(token=bot_token)
     telegram_caption_limit = 1024
-    print(f"Attempting to send to chat_id: {channel_id} with bot token ending in: {bot_token[-6:]}")
-    # Add this line to explicitly check the value
-    print(f"Raw channel_id value: '{channel_id}' (type: {type(channel_id)})")
+    print(f"Attempting to send to chat_id: {channel_id} (type: {type(channel_id)}) with bot token ending in: {bot_token[-6:]}")
     
-    for attempt in range(3):
-        try:
-            with open(docx_path, 'rb') as docx_file:
-                if len(caption) > telegram_caption_limit:
-                    short_caption = caption[:telegram_caption_limit-3] + "..."
-                    await bot.send_document(
-                        chat_id=channel_id,
-                        document=docx_file,
-                        filename=os.path.basename(docx_path),
-                        caption=short_caption
-                    )
-                    await bot.send_message(chat_id=channel_id, text=caption)
-                else:
-                    await bot.send_document(
-                        chat_id=channel_id,
-                        document=docx_file,
-                        filename=os.path.basename(docx_path),
-                        caption=caption
-                    )
-            print("Document sent successfully to Telegram")
-            break
-        except telegram.error.TimedOut:
-            print(f"Telegram timeout on attempt {attempt + 1}, retrying...")
-            await asyncio.sleep(5)
-        except Exception as e:
-            print(f"Failed to send document to Telegram: {str(e)}")
-            raise
+    try:
+        with open(docx_path, 'rb') as docx_file:
+            if len(caption) > telegram_caption_limit:
+                short_caption = caption[:telegram_caption_limit-3] + "..."
+                await bot.send_document(
+                    chat_id=channel_id,
+                    document=docx_file,
+                    filename=os.path.basename(docx_path),
+                    caption=short_caption
+                )
+                await bot.send_message(chat_id=channel_id, text=caption)
+            else:
+                await bot.send_document(
+                    chat_id=channel_id,
+                    document=docx_file,
+                    filename=os.path.basename(docx_path),
+                    caption=caption
+                )
+        print("Document sent successfully to Telegram")
+    except telegram.error.BadRequest as e:
+        print(f"Failed to send document to Telegram: {e.message}")
+        raise
+    except telegram.error.TimedOut:
+        print("Telegram timeout, retrying not implemented here")
+        raise
+    except Exception as e:
+        print(f"Unexpected error sending document to Telegram: {str(e)}")
+        raise
 
 async def main():
     try:
@@ -334,9 +333,10 @@ async def main():
             docx_path = tmp_docx.name
             print(f"Document saved to: {docx_path}")
         
-        # Use GitHub secrets for Telegram credentials
         bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
         channel_id = os.environ.get('TELEGRAM_CHANNEL_ID')
+        print(f"Bot token from env ends with: {bot_token[-6:] if bot_token else 'None'}")
+        print(f"Channel ID from env: {channel_id} (type: {type(channel_id)})")
         
         caption = (
             f"🎗️ {datetime.now().strftime('%d %B %Y')} Current Affairs 🎗️\n\n"
@@ -352,6 +352,3 @@ async def main():
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         raise
-
-if __name__ == "__main__":
-    asyncio.run(main())
