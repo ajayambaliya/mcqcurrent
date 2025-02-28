@@ -28,7 +28,7 @@ jobs:
           MONGO_CONNECTION_STRING: ${{ secrets.MONGO_CONNECTION_STRING }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-          DB_NAME: "mcqwale"
+          DB_NAME: "mcqwaledb"
           COLLECTION_NAME: "scraped_url"
         run: |
           python main.py 
