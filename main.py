@@ -315,7 +315,7 @@ async def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
 async def main():
     try:
         base_url = "https://www.gktoday.in/current-affairs/"
-        article_urls = fetch_article_urls(base_url, 3)
+        article_urls = fetch_article_urls(base_url, 4)
         if not article_urls:
             print("No URLs scraped. Check website structure or connectivity.")
             return
@@ -358,7 +358,6 @@ async def main():
         caption = (
             f"🎗️ {datetime.now().strftime('%d %B %Y')} Current Affairs 🎗️\n\n"
             + '\n'.join([f"👉 {title}" for title in english_titles]) + '\n\n'
-            + "🎉 Join us :- @gujtest 🎉"
         )
         
         await send_docx_to_telegram(docx_path, bot_token, channel_id, caption)
