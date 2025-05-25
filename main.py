@@ -22,33 +22,72 @@ DB_NAME = os.environ.get('DB_NAME')
 COLLECTION_NAME = os.environ.get('COLLECTION_NAME')
 MONGO_CONNECTION_STRING = os.environ.get('MONGO_CONNECTION_STRING')
 
-# Validate MongoDB credentials
-if not all([DB_NAME, COLLECTION_NAME, MONGO_CONNECTION_STRING]):
-    raise ValueError("Missing MongoDB environment variables: DB_NAME, COLLECTION_NAME, or MONGO_CONNECTION_STRING")
+# Initialize MongoDB client and collection if credentials are available
+client = None
+db = None
+collection = None
 
-try:
-    client = pymongo.MongoClient(MONGO_CONNECTION_STRING)
-    db = client[DB_NAME]
-    collection = db[COLLECTION_NAME]
-except pymongo.errors.ConnectionError as e:
-    raise ConnectionError(f"Failed to connect to MongoDB: {str(e)}")
+# Validate MongoDB credentials if not in testing mode
+if not os.environ.get('TESTING_MODE') and not all([DB_NAME, COLLECTION_NAME, MONGO_CONNECTION_STRING]):
+    raise ValueError("Missing MongoDB environment variables: DB_NAME, COLLECTION_NAME, or MONGO_CONNECTION_STRING")
+elif all([DB_NAME, COLLECTION_NAME, MONGO_CONNECTION_STRING]):
+    try:
+        client = pymongo.MongoClient(MONGO_CONNECTION_STRING)
+        db = client[DB_NAME]
+        collection = db[COLLECTION_NAME]
+    except pymongo.errors.ConnectionError as e:
+        print(f"Failed to connect to MongoDB: {str(e)}")
+        # Don't raise an error here to allow testing without MongoDB
 
 def fetch_article_urls(base_url, pages):
     article_urls = []
     for page in range(1, pages + 1):
         url = base_url if page == 1 else f"{base_url}page/{page}/"
         try:
+            print(f"Fetching URLs from: {url}")
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.content, 'html.parser')
-            for h1_tag in soup.find_all('h1', id='list'):
-                a_tag = h1_tag.find('a')
-                if a_tag and a_tag.get('href'):
-                    article_urls.append(a_tag['href'])
+            
+            # Find article URLs using the structure provided by the user
+            post_data_divs = soup.find_all('div', class_='post-data')
+            for div in post_data_divs:
+                h3_tag = div.find('h3')
+                if h3_tag:
+                    a_tag = h3_tag.find('a')
+                    if a_tag and a_tag.get('href'):
+                        article_urls.append(a_tag['href'])
+                        print(f"Found article: {a_tag.text.strip()} at {a_tag['href']}")
+            
+            # If no articles found with the above method, try alternative structures
+            if not post_data_divs:
+                # Try looking for articles
+                articles = soup.find_all('article')
+                for article in articles:
+                    # Find the article title link
+                    h2_tag = article.find('h2', class_='entry-title')
+                    if h2_tag:
+                        a_tag = h2_tag.find('a')
+                        if a_tag and a_tag.get('href'):
+                            article_urls.append(a_tag['href'])
+                
+                # If still no articles, try the original method
+                if not articles:
+                    for h1_tag in soup.find_all('h1', id='list'):
+                        a_tag = h1_tag.find('a')
+                        if a_tag and a_tag.get('href'):
+                            article_urls.append(a_tag['href'])
         except requests.RequestException as e:
             print(f"Failed to fetch URLs from {url}: {str(e)}")
-    print(f"Scraped {len(article_urls)} URLs: {article_urls}")
-    return article_urls
+    
+    # Remove duplicates while preserving order
+    unique_urls = []
+    for url in article_urls:
+        if url not in unique_urls:
+            unique_urls.append(url)
+    
+    print(f"Scraped {len(unique_urls)} unique URLs")
+    return unique_urls
 
 def translate_to_gujarati(text):
     try:
@@ -84,21 +123,31 @@ async def scrape_and_get_content(url):
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
-        main_content = soup.find('div', class_='inside_post column content_width')
+        
+        # Find the main content area with the new structure
+        main_content = soup.find('main', id='main', class_='site-main')
         if not main_content:
-            raise Exception("Main content div not found")
+            # Fallback to the old structure if new one is not found
+            main_content = soup.find('div', class_='inside_post column content_width')
+            if not main_content:
+                raise Exception("Main content element not found")
         
         heading = main_content.find('h1', id='list')
         if not heading:
             raise Exception("Heading not found")
         
-        # Extract featured image
-        image_div = soup.find('div', class_='featured_image')
+        # Extract featured image with the new structure
         image_url = None
-        if image_div:
-            img_tag = image_div.find('img')
-            if img_tag and img_tag.get('src'):
-                image_url = img_tag['src']
+        featured_img = main_content.find('img', class_='post-featured-image')
+        if featured_img and featured_img.get('src'):
+            image_url = featured_img['src']
+        else:
+            # Fallback to old structure
+            image_div = soup.find('div', class_='featured_image')
+            if image_div:
+                img_tag = image_div.find('img')
+                if img_tag and img_tag.get('src'):
+                    image_url = img_tag['src']
         
         content_list = []
         heading_text = heading.get_text().strip()
@@ -106,10 +155,19 @@ async def scrape_and_get_content(url):
         content_list.append({'type': 'heading', 'text': translated_heading, 'image': image_url})
         content_list.append({'type': 'heading', 'text': heading_text, 'image': None})
         
-        numbered_list_counter = 1
-        for tag in main_content.find_all(recursive=False):
-            if tag.get('class') in [['sharethis-inline-share-buttons', 'st-center', 'st-has-labels', 'st-inline-share-buttons', 'st-animated'], ['prenext']]:
+        # Process only the content elements (paragraphs, headings, lists)
+        # Skip breadcrumb, post-meta, comments and other non-content elements
+        content_elements = []
+        for tag in main_content.find_all(['p', 'h2', 'h4', 'ul', 'ol']):
+            # Skip elements inside comments, sharethis, related-articles
+            if tag.parent.get('id') == 'comments' or \
+               (tag.parent.get('class') and any(c in ['sharethis-inline-share-buttons', 'related-articles', 'breadcrumb'] 
+                                             for c in tag.parent.get('class', []))):
                 continue
+            content_elements.append(tag)
+            
+        numbered_list_counter = 1
+        for tag in content_elements:
             text = tag.get_text().strip()
             if not text:
                 continue
@@ -174,7 +232,6 @@ def setup_document_styles(doc):
     h1_style.font.color.rgb = RGBColor(51, 51, 51)
     h1_style.paragraph_format.space_before = Pt(12)
     h1_style.paragraph_format.space_after = Pt(8)
-    h1_style.paragraph_format.left_indent = Inches(0.25)
 
     # Heading 2 Style
     h2_style = styles.add_style('CoolHeading2', WD_STYLE_TYPE.PARAGRAPH)
@@ -262,6 +319,12 @@ def create_styled_document(content_list):
 
 def check_and_insert_urls(urls):
     new_urls = []
+    
+    # If MongoDB is not available, return all URLs as new
+    if collection is None:
+        print("MongoDB not available. Treating all URLs as new.")
+        return urls
+        
     for url in urls:
         if 'daily-current-affairs-quiz' in url:
             continue
@@ -275,7 +338,7 @@ async def send_docx_to_telegram(docx_path, bot_token, channel_id, caption):
     if not bot_token or not channel_id:
         raise ValueError("Bot token or channel ID is missing")
     
-    # Convert channel_id to integer if it’s a string
+    # Convert channel_id to integer if it's a string
     if isinstance(channel_id, str):
         channel_id = int(channel_id)
     
@@ -320,7 +383,11 @@ async def main():
             print("No URLs scraped. Check website structure or connectivity.")
             return
         
-        new_urls = check_and_insert_urls(article_urls)
+        # Filter out quiz articles before checking for new URLs
+        filtered_urls = [url for url in article_urls if 'quiz' not in url.lower() and 'mcq' not in url.lower()]
+        print(f"Filtered out {len(article_urls) - len(filtered_urls)} quiz/MCQ articles")
+        
+        new_urls = check_and_insert_urls(filtered_urls)
         if not new_urls:
             print("No new URLs to process")
             return
@@ -328,10 +395,15 @@ async def main():
         all_content = []
         english_titles = []
         for url in new_urls:
+            print(f"Processing article: {url}")
             content_list = await scrape_and_get_content(url)
             if content_list:
                 all_content.extend(content_list)
-                english_titles.append(content_list[1]['text'])  # English title
+                # English title is at index 1 (index 0 is Gujarati title)
+                english_titles.append(content_list[1]['text'])
+                print(f"Added article: {content_list[1]['text']}")
+            else:
+                print(f"Failed to extract content from: {url}")
         
         if not all_content:
             print("No content scraped from new URLs")
