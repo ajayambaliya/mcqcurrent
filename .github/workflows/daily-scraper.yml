@@ -3,7 +3,7 @@ name: Daily Current Affairs Scraper
 on:
   schedule:
     - cron: '30 2 * * *' # 2:30 AM UTC = 8:00 AM IST
-  workflow_dispatch: # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   scrape-and-post:
@@ -16,12 +16,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9' # Adjust version as needed
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Debug schedule
+        run: echo "Workflow triggered at $(date -u)"
 
       - name: Run scraper script
         env:
@@ -31,6 +34,11 @@ jobs:
           DB_NAME: "mcqwaledb"
           COLLECTION_NAME: "scraped_url"
         run: |
-          python main.py 
+          python main.py
 
-     
+      - name: Notify on failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+          -d '{"chat_id": "${{ secrets.TELEGRAM_CHANNEL_ID }}", "text": "Workflow failed! Check logs."}' \
+          https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage
